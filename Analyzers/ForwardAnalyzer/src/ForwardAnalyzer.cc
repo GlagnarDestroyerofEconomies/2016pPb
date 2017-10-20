@@ -55,6 +55,7 @@ class ForwardAnalyzer : public edm::EDAnalyzer {
         std::string *BranchNames;
         int DigiDataADC[180];
         float DigiDatafC[180];
+        float DigiDatafCreg[180];
         int BeamData[6];
         int Runno;
         edm::Service<TFileService> mFileServer;
@@ -137,6 +138,9 @@ void ForwardAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& i
   
   edm::Handle<reco::Centrality> centrality;
   iEvent.getByToken(token_cent, centrality);
+  
+  edm::ESHandle<HcalDbService> conditions;
+  iSetup.get<HcalDbRecord>().get(conditions);
     
   
   bin = centrality->EtHFtowerSum();
@@ -156,8 +160,11 @@ void ForwardAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& i
     
     
     const ZDCDigiCollection * zdc_digi = zdcdigis.failedToGet()? 0 : &*zdcdigis;
+    
+    iSetup.get<HcalDbRecord>().get(conditions);
+    
     if (zdc_digi) {
-        for (int i = 0; i<180; i++) {DigiDatafC[i] = 0; DigiDataADC[i] = 0;}
+        for (int i = 0; i<180; i++) {DigiDatafCreg[i] = 0; DigiDatafC[i] = 0; DigiDataADC[i] = 0;}
 	for (ZDCDigiCollection::const_iterator j = zdc_digi->begin(); j!=zdc_digi->end(); j++) {
   	    const ZDCDataFrame digi = (const ZDCDataFrame)(*j);
 	    int iSide    = digi.id().zside();
@@ -166,11 +173,19 @@ void ForwardAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& i
 	    int chid     = (iSection-1)*5 + (iSide+1)/2*9 + (iChannel-1);
 //	    cout << "iSide: " << iSide << "  Section: " << iSection << "  Channel: " << iChannel << "  chid: " << chid << endl;
 
+		HcalZDCDetId cell = j->id();
+		const HcalQIECoder* qiecoder = conditions->getHcalCoder (cell);
+            const HcalQIEShape* qieshape = conditions->getHcalShape (qiecoder);
+            
       	    CaloSamples caldigi;
+      	    HcalCoderDb coder(*qiecoder,*qieshape);
 	    int fTS = digi.size();
+	    
+	    coder.adc2fC(digi,caldigi);
 
      	    for (int i = 0; i < fTS; i++) {
-		DigiDatafC[i+chid*10] = digi[i].nominal_fC();
+		DigiDatafC[i+chid*10] = digi[i].nominal_fC(); //<-- nominal
+//		DigiDatafC[i+chid*10] = caldigi[i];	///regular (always use this one!!)
        		DigiDataADC[i+chid*10] = digi[i].adc();
 //     		cout << "i: " << i << "  chid*10: " << chid*10 << "  DigiDatafC: " << DigiDatafC[i+chid*10] << "  DigiDataADC: " << DigiDataADC[i+chid*10] << endl;
 	    }
